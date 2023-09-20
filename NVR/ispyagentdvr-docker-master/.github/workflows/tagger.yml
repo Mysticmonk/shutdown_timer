@@ -1,0 +1,84 @@
+name: Check for updates and tag
+on:
+  #Push trigger
+  push:
+    branches:
+      - master
+  #Manual dispatch trigger
+  workflow_dispatch:
+  #Remote github trigger
+  repository_dispatch:
+    types: execute
+  #Run 3 times per day, evenly distributed
+  schedule:
+    - cron: "0 */8 * * *"
+
+jobs:
+  build:
+    # Job name is Greeting
+    name: Update iSpy Agent DVR
+    # This runs the job on ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get latest file and extract version number
+        run: |
+          FILE_LOCATION=$(echo $(wget -qO- "https://www.ispyconnect.com/api/Agent/DownloadLocation4?platform=Linux64&fromVersion=0" | tr -d '"'))
+          echo FILE_LOCATION=$FILE_LOCATION >> $GITHUB_ENV
+          echo $FILE_LOCATION
+          LATEST_VERSION=$(echo $FILE_LOCATION | grep -Po "(?<=Linux64_).*(?=.zip)" | tr _ .)
+          echo LATEST_VERSION=$LATEST_VERSION >> $GITHUB_ENV
+          echo $LATEST_VERSION
+          
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Get latest tag and search for tag with current version
+        run: |
+          echo LAST_TAG_VERSION=$(git describe --tags `git rev-list --tags --max-count=1`) >> $GITHUB_ENV
+          echo LATEST_TAG_EXISTS=$(git tag -l "$LATEST_VERSION") >> $GITHUB_ENV
+          
+      - name: Compare versions
+        #dpkg --compare-versions returns 0 if it's true and non-zero if false
+        run: |
+          if $(dpkg --compare-versions $LAST_TAG_VERSION "lt" $LATEST_VERSION)
+          then
+            NEEDS_TAG=true
+          else
+            NEEDS_TAG=false
+          fi
+          echo Comparison returned $NEEDS_TAG
+          echo Latest tag search returned $LATEST_TAG_EXISTS
+          if [ $NEEDS_TAG ] && ! [ $LATEST_TAG_EXISTS ]
+          then
+            NEEDS_TAG=true
+            echo New tag ${{env.LATEST_VERSION}} will be created
+          else
+            NEEDS_TAG=false
+            echo No new tag will be created
+          fi
+          echo $NEEDS_TAG
+          echo NEEDS_TAG=$NEEDS_TAG >> $GITHUB_ENV
+
+      - if: env.NEEDS_TAG == 'true'
+        name: Update Agent version in Dockerfile
+        id: update_dockerfile
+        uses: doitandbedone/dockerfile-updater@feature/output-sha-and-branch-name
+        with:
+          token: ${{secrets.PAT}}
+          args: "FILE_LOCATION=\"${{env.FILE_LOCATION}}\""
+
+      - if: env.NEEDS_TAG == 'true'
+        name: Tag new version
+        uses: actions/github-script@v5
+        env:
+          SHA: ${{steps.update_dockerfile.outputs.sha}}
+        with:
+          github-token: ${{ secrets.PAT }}
+          script: |
+            console.log(context)
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: "refs/tags/" + process.env.LATEST_VERSION,
+              sha: process.env.SHA
+            })

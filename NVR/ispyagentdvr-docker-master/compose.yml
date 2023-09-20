@@ -1,0 +1,23 @@
+#docker run -it -p 8090:8090 -p 3478:3478/udp -p 50000-50010:50000-50010/udp \n
+#-v /var/lib/docker/volumes/ispyagentdvr/_data/config/:/agent/Media/XML/ \n
+#-v /var/lib/docker/volumes/ispyagentdvr/_data/media/:/agent/Media/WebServerRoot/Media/ \n
+#-v /var/lib/docker/volumes/ispyagentdvr/_data/commands/:/agent/Commands/ \n
+#-e TZ=America/Chicago \n
+#--name ispyagentdvr doitandbedone/ispyagentdvr
+
+services:
+  ispyagentdvr:
+    image: doitandbedone/ispyagentdvr
+    volumes:
+      - /var/lib/docker/volumes/ispyagentdvr/_data/config/:/agent/Media/XML/
+      - /var/lib/docker/volumes/ispyagentdvr/_data/media/:/agent/Media/WebServerRoot/Media/
+      - /var/lib/docker/volumes/ispyagentdvr/_data/commands/:/agent/Commands/
+    environment:
+      - TZ=America/Chicago
+    ports:
+      - 8090:8090
+      - 3478:3478/udp
+      - 50000-50010:50000-50010/udp
+
+volumes:
+  ispyagentdvr:
